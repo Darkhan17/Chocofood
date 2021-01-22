@@ -1,0 +1,56 @@
+version : '3.8'
+
+services :
+  db:
+    image: postgres
+    environment:
+      - POSTGRES_DB:products
+      - POSTGRES_USER:postgres
+      - POSTGRES_PASSWORD:1
+    volumes:
+      - "dbdata:/var/lib/postgresql/data"
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: django
+    command: bash -c "python manage.py migrate --noinput &&
+                      python manage.py runserver 0.0.0.0:8000"
+    volumes:
+      - .:/code/
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+      - cache
+  redis:
+    image: "redis:alpine"
+    ports:
+      - "6379:6379"
+  bq:
+    image: 'openbridge/ob_google-bigquery'
+    environment:
+      GOOGLE_CLOUDSDK_ACCOUNT_FILE : 'choco-302209-021fd59362d6.json'
+  worker:
+    build: .
+    command: celery -A website worker -l INFO
+    volumes:
+      - .:/code/
+    depends_on:
+      - bq
+  monitor:
+    build: .
+    command: celery -A website beat -l INFO
+    volumes:
+      - .:/code/
+    depends_on:
+      - web
+      - redis
+  cache:
+    image: "redis:alpine"
+    ports:
+      - "6380:6380"
+    command: redis-server --port 6380
+
+volumes:
+  dbdata:
